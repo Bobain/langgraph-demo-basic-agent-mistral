@@ -5,7 +5,7 @@ Returns a predefined response. Replace logic and configuration as needed.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Dict
 
 # To support Python < 3.12 which is used in LangGraph Docker image with langgraph up
@@ -13,22 +13,32 @@ from typing_extensions import TypedDict
 
 from langchain.chat_models import init_chat_model
 from langgraph.graph import StateGraph
-from langgraph.runtime import Runtime
 import langsmith as ls  # noqa: F401
+from pydantic import BaseModel
+
+## This structure output allows additional fields to be added like randonnee
+# @dataclass
+# class Criteres:
+#     criteres: dict[str, bool | None] = field(
+#         default_factory=lambda: {
+#             "plage": None,
+#             "montagne": None,
+#             "ville": None,
+#             "sport": None,
+#             "detente": None,
+#             "acces_handicap": None,
+#         }
+#     )
 
 
-@dataclass
-class Criteres:
-    criteres: dict[str, bool | None] = field(
-        default_factory=lambda: {
-            "plage": None,
-            "montagne": None,
-            "ville": None,
-            "sport": None,
-            "detente": None,
-            "acces_handicap": None,
-        }
-    )
+# This version is more strict and will ignore extra fields
+class Criteres(BaseModel):
+    plage: bool | None = None
+    montagne: bool | None = None
+    ville: bool | None = None
+    sport: bool | None = None
+    detente: bool | None = None
+    acces_handicap: bool | None = None
 
 
 class Context(TypedDict):
@@ -50,15 +60,16 @@ class State:
     """
 
     last_user_message: str
-    ai_structured_output: Criteres
-    # last_ai_message: str = ""
-    # message_count: int = 0
+    ai_structured_output: Criteres | None = None
+    last_ai_message: str = ""
+    message_count: int = 0
 
 
-async def call_model(state: State, runtime: Runtime[Context]) -> Dict[str, Any]:
+async def call_model(state: State) -> Dict[str, Any]:
     """Process input and returns output.
 
-    Can use runtime context to alter behavior.
+    , runtime: Runtime[Context]
+    Cannot use runtime context to alter behavior.
     """
     print(str(state))
     # see https://docs.mistral.ai/getting-started/models/models_overview/
@@ -66,11 +77,10 @@ async def call_model(state: State, runtime: Runtime[Context]) -> Dict[str, Any]:
     chat_model = init_chat_model(model="codestral-2508", model_provider="mistralai")
     chat_model = chat_model.with_structured_output(Criteres)
 
-    await chat_model.ainvoke(state.last_user_message)
+    res = await chat_model.ainvoke(state.last_user_message)
     return {
-        # "message_count": state.message_count + 1,
-        # "last_ai_message": res.content,  # "output from call_model."
-        "ai_structured_output": state.ai_structured_output,
+        "message_count": state.message_count + 1,
+        "ai_structured_output": res,
         # f"Configured with {runtime.context.get('my_configurable_param')}"
     }
 
@@ -79,3 +89,14 @@ async def call_model(state: State, runtime: Runtime[Context]) -> Dict[str, Any]:
 builder = StateGraph(State, context_schema=Context).add_node(call_model).add_edge("__start__", "call_model")
 
 graph = builder.compile(name="New Graph")
+
+
+if __name__ == "__main__":
+    import asyncio
+    from dotenv import load_dotenv
+
+    load_dotenv()
+    # state = State(last_user_message="J'aime le sport et la randonnée dans le désert")
+    state = State(last_user_message="J'aime le sport et la randonnée, mais je suis une personne à mobilité réduite")
+    # state = State(last_user_message="J'aime le sport et la et la randonnée")
+    print(asyncio.run(graph.ainvoke(state)))
