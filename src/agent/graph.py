@@ -9,7 +9,6 @@ from dataclasses import dataclass, field
 from typing import Any, Dict
 
 # To support Python < 3.12 which is used in LangGraph Docker image with langgraph up
-from typing_extensions import TypedDict
 
 from langchain.chat_models import init_chat_model
 from langgraph.graph import StateGraph
@@ -35,16 +34,6 @@ chat_model = init_chat_model(model="codestral-2508", model_provider="mistralai")
 chat_model = chat_model.with_structured_output(Criteres)
 
 
-class Context(TypedDict):
-    """Context parameters for the agent.
-
-    Set these when creating assistants OR when invoking the graph.
-    See: https://langchain-ai.github.io/langgraph/cloud/how-tos/configuration_cloud/
-    """
-
-    my_configurable_param: str
-
-
 @dataclass
 class State:
     """Input state for the agent.
@@ -58,7 +47,7 @@ class State:
     message_count: int = 0
 
 
-async def call_model(state: State, runtime: Runtime[Context]) -> Dict[str, Any]:
+async def call_model(state: State, runtime: Runtime[Criteres]) -> Dict[str, Any]:
     """Process input and returns output.
 
     Can use runtime context to alter behavior.
@@ -69,8 +58,8 @@ async def call_model(state: State, runtime: Runtime[Context]) -> Dict[str, Any]:
     res = await chat_model.ainvoke(state.last_user_message)
     return {
         "message_count": state.message_count + 1,
-        "last_ai_message": res.content,  # "output from call_model. "
-        # f"Configured with {runtime.context.get('my_configurable_param')}"
+        "last_ai_message": res.content,
+        "criteria": f"Criteria: {runtime.context.criteres}",
     }
 
 
