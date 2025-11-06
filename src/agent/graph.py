@@ -65,6 +65,19 @@ class State:
     message_count: int = 0
 
 
+def model_introduction(state: State):
+    return {
+        "last_user_message": state.last_user_message,
+        "message_count": state.message_count + 1,
+        "ai_structured_output": None,
+        "last_ai_message": f"""Bonjour, je suis un assistant qui va vous aider à planifier votre prochain voyage.
+        Vous pouvez me parler naturellement, mais sachez que je vais limiter mes recherches de voyages aux critères suivants:
+        {', '.join(list(Criteres.model_fields.keys()))}
+        """,
+        # f"Configured with {runtime.context.get('my_configurable_param')}"
+    }
+
+
 async def call_model(state: State) -> Dict[str, Any]:
     """Process input and returns output.
 
@@ -79,6 +92,7 @@ async def call_model(state: State) -> Dict[str, Any]:
 
     res = await chat_model.ainvoke(state.last_user_message)
     return {
+        "last_user_message": state.last_user_message,
         "message_count": state.message_count + 1,
         "ai_structured_output": res,
         # f"Configured with {runtime.context.get('my_configurable_param')}"
@@ -86,7 +100,12 @@ async def call_model(state: State) -> Dict[str, Any]:
 
 
 # Define the graph
-builder = StateGraph(State, context_schema=Context).add_node(call_model).add_edge("__start__", "call_model")
+builder = StateGraph(State, context_schema=Context)
+builder.add_node(model_introduction.__name__, model_introduction)
+builder.add_node(call_model.__name__, call_model)
+
+builder.add_edge("__start__", "model_introduction")
+builder.add_edge("model_introduction", "call_model")
 
 graph = builder.compile(name="New Graph")
 
@@ -100,3 +119,55 @@ if __name__ == "__main__":
     state = State(last_user_message="J'aime le sport et la randonnée, mais je suis une personne à mobilité réduite")
     # state = State(last_user_message="J'aime le sport et la et la randonnée")
     print(asyncio.run(graph.ainvoke(state)))
+
+
+#
+#
+# criteres = Criteres()
+#
+# # Obtenir tous les champs avec leurs valeurs
+# for field_name, value in criteres:
+#     print(f"{field_name}: {value}")
+#
+# # Ou avec model_dump()
+# criteres_dict = criteres.model_dump()
+# for field_name, value in criteres_dict.items():
+#     print(f"{field_name}: {value}")
+#
+# Pour votre cas d'usage dans le code :
+#
+# Voici comment vous pourriez l'utiliser dans votre fonction has_criteria ou search_travel :
+#
+# def has_criteria(state: State) -> str:
+#     """Check if any criteria is True."""
+#     criteres = state.ai_structured_output
+#     if criteres is None:
+#         return "ask_criteria"
+#
+#     # Obtenir toutes les valeurs des champs
+#     values = criteres.model_dump().values()
+#
+#     # Vérifier si au moins une valeur est True
+#     if any(values):
+#         return "search"
+#     else:
+#         return "ask_criteria"
+#
+# Ou pour construire dynamiquement la liste des critères actifs :
+#
+# async def search_travel(state: State) -> Dict[str, Any]:
+#     """Search for travel options using Tavily based on criteria."""
+#     criteres = state.ai_structured_output
+#
+#     # Obtenir tous les critères actifs (True)
+#     active_criteria = [
+#         field_name
+#         for field_name, value in criteres.model_dump().items()
+#         if value is True
+#     ]
+#
+#     query = f"voyage destination {' '.join(active_criteria)}"
+#     # ...
+#
+# La méthode recommandée pour Pydantic v2 est model_fields pour accéder aux métadonnées des champs et model_dump() pour obtenir les valeurs d'une instance.
+#
