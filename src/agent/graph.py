@@ -41,6 +41,12 @@ class Criteres(BaseModel):
     acces_handicap: bool | None = None
 
 
+ai_role_message = f"""Bonjour, je suis un assistant qui va vous aider à planifier votre prochain voyage.
+        Vous pouvez me parler naturellement, mais sachez que je vais limiter mes recherches de voyages aux critères suivants:
+        {', '.join(list(Criteres.model_fields.keys()))}
+        """
+
+
 class Context(TypedDict):
     """Context parameters for the agent.
 
@@ -70,10 +76,7 @@ def model_introduction(state: State):
         "last_user_message": state.last_user_message,
         "message_count": state.message_count + 1,
         "ai_structured_output": None,
-        "last_ai_message": f"""Bonjour, je suis un assistant qui va vous aider à planifier votre prochain voyage.
-        Vous pouvez me parler naturellement, mais sachez que je vais limiter mes recherches de voyages aux critères suivants:
-        {', '.join(list(Criteres.model_fields.keys()))}
-        """,
+        "last_ai_message": ai_role_message,
         # f"Configured with {runtime.context.get('my_configurable_param')}"
     }
 
@@ -95,6 +98,7 @@ async def call_model(state: State) -> Dict[str, Any]:
         "last_user_message": state.last_user_message,
         "message_count": state.message_count + 1,
         "ai_structured_output": res,
+        "last_ai_message": ai_role_message,
         # f"Configured with {runtime.context.get('my_configurable_param')}"
     }
 
@@ -104,8 +108,8 @@ builder = StateGraph(State, context_schema=Context)
 builder.add_node(model_introduction.__name__, model_introduction)
 builder.add_node(call_model.__name__, call_model)
 
-builder.add_edge("__start__", "model_introduction")
-builder.add_edge("model_introduction", "call_model")
+builder.add_edge("__start__", "call_model")
+builder.add_conditional_edges("model_introduction", "call_model")
 
 graph = builder.compile(name="New Graph")
 
