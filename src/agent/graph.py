@@ -85,10 +85,17 @@ async def look_for_travel(state: State):
     return {
         "last_user_message": state.last_user_message,
         "message_count": state.message_count + 1,
-        "ai_structured_output": "Let me have a look",
+        "ai_structured_output": state.ai_structured_output,
         "last_ai_message": "Let me have a look",
         # f"Configured with {runtime.context.get('my_configurable_param')}"
     }
+
+
+async def criteria_router(state: State):
+    if any(v is not None for v in state.ai_structured_output.model_dump().values()):
+        return look_for_travel.__name__
+    else:
+        return model_introduction.__name__
 
 
 async def criteria_extractor_model(state: State) -> Dict[str, Any]:
@@ -104,17 +111,13 @@ async def criteria_extractor_model(state: State) -> Dict[str, Any]:
     chat_model = chat_model.with_structured_output(Criteres)
 
     res = await chat_model.ainvoke(state.last_user_message)
-    if any(v is not None for v in res.model_dump().values()):
-        return look_for_travel.__name__
-    else:
-        return model_introduction.__name__
-    # return {
-    #     "last_user_message": state.last_user_message,
-    #     "message_count": state.message_count + 1,
-    #     "ai_structured_output": res,
-    #     "last_ai_message": state.last_ai_message,
-    #     # f"Configured with {runtime.context.get('my_configurable_param')}"
-    # }
+    return {
+        "last_user_message": state.last_user_message,
+        "message_count": state.message_count + 1,
+        "ai_structured_output": res,
+        "last_ai_message": state.last_ai_message,
+        # f"Configured with {runtime.context.get('my_configurable_param')}"
+    }
 
 
 # Define the graph
@@ -124,7 +127,8 @@ builder.add_node(criteria_extractor_model.__name__, criteria_extractor_model)
 builder.add_node(look_for_travel.__name__, look_for_travel)
 
 builder.add_edge("__start__", model_introduction.__name__)
-builder.add_conditional_edges(model_introduction.__name__, criteria_extractor_model)
+builder.add_edge(model_introduction.__name__, criteria_extractor_model.__name__)
+builder.add_conditional_edges(criteria_extractor_model.__name__, criteria_router)
 
 graph = builder.compile(name="New Graph")
 
