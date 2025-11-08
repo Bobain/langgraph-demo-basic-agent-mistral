@@ -15,6 +15,7 @@ from langchain.chat_models import init_chat_model
 from langgraph.graph import StateGraph
 import langsmith as ls  # noqa: F401
 from pydantic import BaseModel
+from langgraph.checkpoint.memory import MemorySaver
 
 ## This structure output allows additional fields to be added like randonnee
 # @dataclass
@@ -91,11 +92,22 @@ async def look_for_travel(state: State):
     }
 
 
+async def wait_for_input(state: State):
+    """Node that waits for user input before continuing."""
+    return {
+        "last_user_message": state.last_user_message,
+        "message_count": state.message_count,
+        "ai_structured_output": None,
+        "last_ai_message": state.last_ai_message,
+    }
+
+
 async def criteria_router(state: State):
     if any(v is not None for v in state.ai_structured_output.model_dump().values()):
         return look_for_travel.__name__
     else:
-        return "__start__"
+        # Route to wait_for_input to pause for new user input
+        return wait_for_input.__name__
 
 
 async def criteria_extractor_model(state: State) -> Dict[str, Any]:
@@ -125,14 +137,21 @@ builder = StateGraph(State, context_schema=Context)
 builder.add_node(model_introduction.__name__, model_introduction)
 builder.add_node(criteria_extractor_model.__name__, criteria_extractor_model)
 builder.add_node(look_for_travel.__name__, look_for_travel)
+builder.add_node(wait_for_input.__name__, wait_for_input)
 
 builder.add_edge("__start__", model_introduction.__name__)
 builder.add_edge(model_introduction.__name__, criteria_extractor_model.__name__)
 
 builder.add_conditional_edges(criteria_extractor_model.__name__, criteria_router)
-builder.add_edge(look_for_travel.__name__, "__end__")
+# After showing travel options, go back to wait for more user input
+builder.add_edge(look_for_travel.__name__, wait_for_input.__name__)
+# When waiting for input, go back to criteria extractor with new message
+builder.add_edge(wait_for_input.__name__, criteria_extractor_model.__name__)
 
-graph = builder.compile(name="New Graph")
+# Compile with checkpointer to enable interrupts
+# Interrupt before wait_for_input node to pause for new user input
+checkpointer = MemorySaver()
+graph = builder.compile(name="New Graph", checkpointer=checkpointer, interrupt_before=[wait_for_input.__name__])
 
 
 if __name__ == "__main__":
@@ -143,11 +162,44 @@ if __name__ == "__main__":
 
     print(graph.get_graph().draw_ascii())
 
-    # state = State(last_user_message="J'aime le sport et la randonnée dans le désert")
-    state = State(last_user_message="J'aime le sport et la randonnée, mais je suis une personne à mobilité réduite")
+    # Same thread_id allows conversation continuity
+    config = {"configurable": {"thread_id": "conversation-1"}}
+
+    # Example 1: User says "Bonjour" - no criteria extracted
+    print("\n=== First message: 'Bonjour' (no criteria) ===")
     state = State(last_user_message="Bonjour")
-    # state = State(last_user_message="J'aime le sport et la et la randonnée")
-    print(asyncio.run(graph.ainvoke(state)))
+    result = asyncio.run(graph.ainvoke(state, config=config))
+    print(f"Message count: {result['message_count']}")
+    print(f"AI response: {result['last_ai_message'][:100]}...")
+    print(f"Extracted criteria: {result['ai_structured_output']}")
+    print("⏸️  Graph paused at wait_for_input (interrupt)")
+
+    # Example 2: Continue conversation with new input (still no clear criteria)
+    print("\n=== Second message: 'Je ne sais pas' (no criteria) ===")
+    state2 = State(last_user_message="Je ne sais pas")
+    result2 = asyncio.run(graph.ainvoke(state2, config=config))
+    print(f"Message count: {result2['message_count']}")
+    print(f"Extracted criteria: {result2['ai_structured_output']}")
+    print("⏸️  Graph paused at wait_for_input again (interrupt)")
+
+    # Example 3: Finally provide criteria - graph shows results then waits again
+    print("\n=== Third message: With criteria ===")
+    state3 = State(last_user_message="J'aime le sport et la randonnée, mais je suis une personne à mobilité réduite")
+    result3 = asyncio.run(graph.ainvoke(state3, config=config))
+    print(f"Message count: {result3['message_count']}")
+    print(f"AI response: {result3['last_ai_message']}")
+    print(f"Extracted criteria: {result3['ai_structured_output']}")
+    print("⏸️  Graph showed results and paused for refinement")
+
+    # Example 4: User can continue the conversation to refine
+    print("\n=== Fourth message: Refining criteria ===")
+    state4 = State(last_user_message="En fait, je préfère la plage plutôt que la montagne")
+    result4 = asyncio.run(graph.ainvoke(state4, config=config))
+    print(f"Message count: {result4['message_count']}")
+    print(f"AI response: {result4['last_ai_message']}")
+    print(f"Extracted criteria: {result4['ai_structured_output']}")
+    print("⏸️  Graph showed updated results and paused again")
+    print("\n✅ This creates a continuous conversation loop!")
 
 
 #
