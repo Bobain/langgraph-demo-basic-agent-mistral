@@ -95,7 +95,7 @@ async def criteria_router(state: State):
     if any(v is not None for v in state.ai_structured_output.model_dump().values()):
         return look_for_travel.__name__
     else:
-        return model_introduction.__name__
+        return "__end__"
 
 
 async def criteria_extractor_model(state: State) -> Dict[str, Any]:
@@ -131,6 +131,7 @@ builder.add_node(look_for_travel.__name__, look_for_travel)
 builder.add_edge("__start__", model_introduction.__name__)
 builder.add_edge(model_introduction.__name__, criteria_extractor_model.__name__)
 builder.add_conditional_edges(criteria_extractor_model.__name__, criteria_router)
+builder.add_edge(look_for_travel.__name__, "__end__")
 
 graph = builder.compile(name="New Graph")
 
