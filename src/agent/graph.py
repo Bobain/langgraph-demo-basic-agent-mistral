@@ -15,6 +15,35 @@ from langchain.chat_models import init_chat_model
 from langgraph.graph import StateGraph
 import langsmith as ls  # noqa: F401
 from pydantic import BaseModel
+from langchain_tavily import TavilySearch
+from typing import cast
+
+MAX_TAVILY_RESULTS = 5
+TAVILY_INJECT_RAW_USER_MEASSAGE = False
+
+
+async def search_travel(state: State):
+    """Search for general web results.
+
+    This function performs a search using the Tavily search engine, which is designed
+    to provide comprehensive, accurate, and trusted results. It's particularly useful
+    for answering questions about current events.
+    """
+    wrapped = TavilySearch(max_results=MAX_TAVILY_RESULTS)
+    criteria = state.ai_structured_output
+    query = "Trouve un voyage tout organisé qui respecte les critères suivants \n: "
+    for criterion, value in criteria.model_dump().items():
+        if value is not None and not criterion == "acces_handicap":
+            query += f"{criterion} = {value} "
+
+    if criteria.acces_handicap:
+        query += (
+            "\n ATTENTION cette personne est handicapée, "
+            "il faut absolument que tu trouves un voyage qui lui permette d'accéder aux activitées qui sont définies dans les critères mais en respectant cette contrainte"
+        )
+    res = await wrapped.ainvoke({"query": query})
+    return cast(dict[str, Any], res)
+
 
 ## This structure output allows additional fields to be added like randonnee
 # @dataclass
@@ -71,9 +100,9 @@ class State:
     message_count: int = 0
 
 
-async def model_introduction(state: State):
+async def criteria_no_match(state: State):
     return {
-        "last_user_message": state.last_user_message,
+        "last_user_message": "",
         "message_count": state.message_count + 1,
         "ai_structured_output": None,
         "last_ai_message": ai_role_message,
@@ -86,16 +115,16 @@ async def look_for_travel(state: State):
         "last_user_message": state.last_user_message,
         "message_count": state.message_count + 1,
         "ai_structured_output": state.ai_structured_output,
-        "last_ai_message": "Let me have a look",
+        "last_ai_message": "Please wait, I need to look for travel options matching your criteria.",
         # f"Configured with {runtime.context.get('my_configurable_param')}"
     }
 
 
 async def criteria_router(state: State):
     if any(v is not None for v in state.ai_structured_output.model_dump().values()):
-        return look_for_travel.__name__
+        return search_travel.__name__
     else:
-        return model_introduction.__name__
+        return criteria_no_match.__name__
 
 
 async def criteria_extractor_model(state: State) -> Dict[str, Any]:
@@ -122,16 +151,17 @@ async def criteria_extractor_model(state: State) -> Dict[str, Any]:
 
 # Define the graph
 builder = StateGraph(State, context_schema=Context)
-builder.add_node(model_introduction.__name__, model_introduction)
+builder.add_node(criteria_no_match.__name__, criteria_no_match)
 builder.add_node(criteria_extractor_model.__name__, criteria_extractor_model)
 builder.add_node(look_for_travel.__name__, look_for_travel)
+builder.add_node(search_travel.__name__, search_travel)
 
 # builder.add_edge("__start__", criteria_extractor_model.__name__)
 
 builder.add_edge("__start__", criteria_extractor_model.__name__)
 builder.add_conditional_edges(criteria_extractor_model.__name__, criteria_router)
-builder.add_edge(look_for_travel.__name__, "__end__")
-builder.add_edge(model_introduction.__name__, "__end__")
+builder.add_edge(search_travel.__name__, "__end__")
+builder.add_edge(criteria_no_match.__name__, "__end__")
 
 graph = builder.compile(name="New Graph")
 
