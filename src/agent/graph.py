@@ -126,11 +126,10 @@ builder.add_node(model_introduction.__name__, model_introduction)
 builder.add_node(criteria_extractor_model.__name__, criteria_extractor_model)
 builder.add_node(look_for_travel.__name__, look_for_travel)
 
-# builder.add_edge("__start__", criteria_extractor_model.__name__)
-
 builder.add_edge("__start__", model_introduction.__name__)
 builder.add_edge(model_introduction.__name__, criteria_extractor_model.__name__)
 builder.add_conditional_edges(criteria_extractor_model.__name__, criteria_router)
+builder.add_edge(look_for_travel.__name__, "__end__")
 
 graph = builder.compile(name="New Graph")
 
