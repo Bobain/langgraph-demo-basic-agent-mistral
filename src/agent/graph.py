@@ -16,7 +16,6 @@ from langgraph.graph import StateGraph
 import langsmith as ls  # noqa: F401
 from pydantic import BaseModel
 from langchain_tavily import TavilySearch
-from typing import cast
 
 MAX_TAVILY_RESULTS = 5
 TAVILY_INJECT_RAW_USER_MEASSAGE = False
@@ -39,13 +38,24 @@ async def search_travel(state: State):
     if criteria.acces_handicap:
         query += (
             "\n ATTENTION cette personne est handicapée, "
-            "il faut absolument que tu trouves un voyage qui lui permette d'accéder aux activitées qui sont définies dans les critères mais en respectant cette contrainte"
+            "il faut absolument que tu trouves un voyage qui respecte les critères mais soit accessible à une personne handicapée"
         )
     res = await wrapped.ainvoke({"query": query})
-    return cast(dict[str, Any], res)
+
+    results = []
+    for result in res["results"]:
+        results.append(result["title"] + " : " + result["url"])
+
+    return {
+        "last_user_message": state.last_user_message,
+        "message_count": state.message_count + 1,
+        "ai_structured_output": state.ai_structured_output,
+        "last_ai_message": "\n".join(results),
+    }
 
 
-## This structure output allows additional fields to be added like randonnee
+## This Sate allows additional fields to be added on top of the of ones already defined,
+#   therefore : it would allow any criterie "mentionned" by the user
 # @dataclass
 # class Criteres:
 #     criteres: dict[str, bool | None] = field(
@@ -110,16 +120,6 @@ async def criteria_no_match(state: State):
     }
 
 
-async def look_for_travel(state: State):
-    return {
-        "last_user_message": state.last_user_message,
-        "message_count": state.message_count + 1,
-        "ai_structured_output": state.ai_structured_output,
-        "last_ai_message": "Please wait, I need to look for travel options matching your criteria.",
-        # f"Configured with {runtime.context.get('my_configurable_param')}"
-    }
-
-
 async def criteria_router(state: State):
     if any(v is not None for v in state.ai_structured_output.model_dump().values()):
         return search_travel.__name__
@@ -153,12 +153,12 @@ async def criteria_extractor_model(state: State) -> Dict[str, Any]:
 builder = StateGraph(State, context_schema=Context)
 builder.add_node(criteria_no_match.__name__, criteria_no_match)
 builder.add_node(criteria_extractor_model.__name__, criteria_extractor_model)
-builder.add_node(look_for_travel.__name__, look_for_travel)
 builder.add_node(search_travel.__name__, search_travel)
 
 # builder.add_edge("__start__", criteria_extractor_model.__name__)
 
 builder.add_edge("__start__", criteria_extractor_model.__name__)
+
 builder.add_conditional_edges(criteria_extractor_model.__name__, criteria_router)
 builder.add_edge(search_travel.__name__, "__end__")
 builder.add_edge(criteria_no_match.__name__, "__end__")
@@ -173,58 +173,8 @@ if __name__ == "__main__":
     load_dotenv()
     # state = State(last_user_message="J'aime le sport et la randonnée dans le désert")
     state = State(last_user_message="J'aime le sport et la randonnée, mais je suis une personne à mobilité réduite")
+    state = State(last_user_message="J'aime la randonnée, mais je suis PMR")
+    state = State(last_user_message="J'aime la randonnée à kla campagne, mais je suis PMR")
     # state = State(last_user_message="Bonjour")
     # state = State(last_user_message="J'aime le sport et la et la randonnée")
     print(asyncio.run(graph.ainvoke(state)))
-
-
-#
-#
-# criteres = Criteres()
-#
-# # Obtenir tous les champs avec leurs valeurs
-# for field_name, value in criteres:
-#     print(f"{field_name}: {value}")
-#
-# # Ou avec model_dump()
-# criteres_dict = criteres.model_dump()
-# for field_name, value in criteres_dict.items():
-#     print(f"{field_name}: {value}")
-#
-# Pour votre cas d'usage dans le code :
-#
-# Voici comment vous pourriez l'utiliser dans votre fonction has_criteria ou search_travel :
-#
-# def has_criteria(state: State) -> str:
-#     """Check if any criteria is True."""
-#     criteres = state.ai_structured_output
-#     if criteres is None:
-#         return "ask_criteria"
-#
-#     # Obtenir toutes les valeurs des champs
-#     values = criteres.model_dump().values()
-#
-#     # Vérifier si au moins une valeur est True
-#     if any(values):
-#         return "search"
-#     else:
-#         return "ask_criteria"
-#
-# Ou pour construire dynamiquement la liste des critères actifs :
-#
-# async def search_travel(state: State) -> Dict[str, Any]:
-#     """Search for travel options using Tavily based on criteria."""
-#     criteres = state.ai_structured_output
-#
-#     # Obtenir tous les critères actifs (True)
-#     active_criteria = [
-#         field_name
-#         for field_name, value in criteres.model_dump().items()
-#         if value is True
-#     ]
-#
-#     query = f"voyage destination {' '.join(active_criteria)}"
-#     # ...
-#
-# La méthode recommandée pour Pydantic v2 est model_fields pour accéder aux métadonnées des champs et model_dump() pour obtenir les valeurs d'une instance.
-#
