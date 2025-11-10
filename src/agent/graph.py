@@ -4,9 +4,8 @@ Returns a predefined response. Replace logic and configuration as needed.
 """
 
 from __future__ import annotations
-
+from typing import Literal
 from dataclasses import dataclass
-from typing import Any, Dict
 
 # To support Python < 3.12 which is used in LangGraph Docker image with langgraph up
 from typing_extensions import TypedDict
@@ -87,14 +86,14 @@ async def criteria_no_match(state: State):
     }
 
 
-async def criteria_router(state: State):
+async def criteria_router(state: State) -> Literal["search_travel", "criteria_no_match"]:
     if any(v is not None for v in state.ai_structured_output.model_dump().values()):
-        return search_travel.__name__
+        return "search_travel"
     else:
-        return criteria_no_match.__name__
+        return "criteria_no_match"
 
 
-async def criteria_extractor_model(state: State) -> Dict[str, Any]:
+async def criteria_extractor_model(state: State) -> State:
     """Process input and returns output.
 
     , runtime: Runtime[Context]
@@ -163,7 +162,7 @@ builder.add_conditional_edges(criteria_extractor_model.__name__, criteria_router
 builder.add_edge(search_travel.__name__, END)
 builder.add_edge(criteria_no_match.__name__, END)
 
-graph = builder.compile(name="Travel searcher")
+graph = builder.compile(name="Travel searcher", checkpointer=None)
 
 
 if __name__ == "__main__":
