@@ -19,6 +19,7 @@ dependencies = [
     "grandalf (>=0.8,<0.9)",
     "tavily (>=1.1.0,<2.0.0)",
     "langchain-tavily (>=0.2.13,<0.3.0)",
+    "unidecode (>=1.4.0,<2.0.0)",
 ]
 
 
