@@ -117,7 +117,7 @@ async def chat_model(state: State):
     # see https://docs.mistral.ai/getting-started/models/models_overview/
 
     chat_model = init_chat_model(model="codestral-2508", model_provider="mistralai")
-    res = await chat_model.with_structured_output(MessageUnderstandable).invoke(
+    res = await chat_model.with_structured_output(MessageUnderstandable).ainvoke(
         f"Le message suivant est-il compréhensible? \n {state.last_user_message}"
     )
 
@@ -130,7 +130,7 @@ async def chat_model(state: State):
             # f"Configured with {runtime.context.get('my_configurable_param')}"
         }
 
-    criteres = await chat_model.with_structured_output(Criteres).invoke(state.last_user_message)
+    criteres = await chat_model.with_structured_output(Criteres).ainvoke(state.last_user_message)
     print(criteres)
     if all(v is None for v in res.model_dump().values()):
         return {
