@@ -8,7 +8,6 @@ from dataclasses import dataclass
 from pydantic import BaseModel
 import unidecode
 from typing_extensions import TypedDict
-import json
 from random import choice
 from langchain.chat_models import init_chat_model
 from langgraph.graph import StateGraph, START, END
@@ -78,7 +77,7 @@ def match_criteria_and_travels(criteres: Criteres) -> str:
         elif score == max_score:
             num_best_travel = choice([num_best_travel, i])
 
-    return json.dumps(output_travels[num_best_travel], indent=4)
+    return output_travels[num_best_travel]
 
 
 class MessageUnderstandable(BaseModel):
@@ -163,7 +162,7 @@ async def chat_model(state: State):
         "last_user_message": state.last_user_message,
         "message_count": state.message_count + 1,
         "ai_structured_output": state.ai_structured_output,
-        "last_ai_message": match_criteria_and_travels(state.ai_structured_output)
+        "last_ai_message": str(match_criteria_and_travels(state.ai_structured_output))
         + "\nVous pouvez préciser votre demande afin que je réponde mieux à vos attentes",
         # f"Configured with {runtime.context.get('my_configurable_param')}"
     }
