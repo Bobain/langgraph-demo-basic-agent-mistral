@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from pydantic import BaseModel
 import unidecode
 from typing_extensions import TypedDict
-from pprint import pprint
+import json
 from random import choice
 from langchain.chat_models import init_chat_model
 from langgraph.graph import StateGraph, START, END
@@ -78,7 +78,7 @@ def match_criteria_and_travels(criteres: Criteres) -> str:
         elif score == max_score:
             num_best_travel = choice([num_best_travel, i])
 
-    return pprint(output_travels[num_best_travel])
+    return json.dumps(output_travels[num_best_travel], indent=4)
 
 
 class MessageUnderstandable(BaseModel):
