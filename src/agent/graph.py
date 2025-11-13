@@ -7,10 +7,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pydantic import BaseModel
 import unidecode
-
-# To support Python < 3.12 which is used in LangGraph Docker image with langgraph up
 from typing_extensions import TypedDict
-
+from pprint import pprint
+from random import choice
 from langchain.chat_models import init_chat_model
 from langgraph.graph import StateGraph, START, END
 import langsmith as ls  # noqa: F401
@@ -49,7 +48,7 @@ class Criteres(BaseModel):
     acces_handicap: bool | None = None
 
 
-def match_criteria_and_travels(criteres: Criteres):
+def match_criteria_and_travels(criteres: Criteres) -> str:
     if criteres.acces_handicap:
         output_travels = []
         for travels in OUTPUT_TRAVELS:
@@ -59,24 +58,27 @@ def match_criteria_and_travels(criteres: Criteres):
         output_travels = OUTPUT_TRAVELS
 
     scores_for_travels = [0] * len(output_travels)
-    for num_travel, travels in enumerate(output_travels):
-        labels = [unidecode.unidecode(label) for label in travels["labels"]]
-        for criterion, criterion_yes_no in criteres.model_dump().items():
-            if not criterion_yes_no and criterion in labels:
-                scores_for_travels[num_travel] += -1
-            elif criterion_yes_no and criterion in labels:
-                scores_for_travels[num_travel] += 1
-            elif criterion_yes_no and criterion not in labels:
-                scores_for_travels[num_travel] += -1
 
-    max_score = -100
+    for num_travel, travel in enumerate(output_travels):
+        labels = [unidecode.unidecode(label) for label in travel["labels"]]
+        for criterion, criterion_yes_no in criteres.model_dump().items():
+            if criterion == "acces_handicap":
+                continue
+            if (not criterion_yes_no) and (criterion in labels):
+                scores_for_travels[num_travel] += -1
+            if criterion_yes_no and (criterion in labels):
+                scores_for_travels[num_travel] += 1
+
+    max_score = -10 * len(criteres.model_dump().keys())
     num_best_travel = None
     for i, score in enumerate(scores_for_travels):
         if score > max_score:
             max_score = score
             num_best_travel = i
+        elif score == max_score:
+            num_best_travel = choice([num_best_travel, i])
 
-    return output_travels[num_best_travel]
+    return pprint(output_travels[num_best_travel])
 
 
 class MessageUnderstandable(BaseModel):
@@ -161,7 +163,8 @@ async def chat_model(state: State):
         "last_user_message": state.last_user_message,
         "message_count": state.message_count + 1,
         "ai_structured_output": state.ai_structured_output,
-        "last_ai_message": match_criteria_and_travels(state.ai_structured_output),
+        "last_ai_message": match_criteria_and_travels(state.ai_structured_output)
+        + "\nVous pouvez préciser votre demande afin que je réponde mieux à vos attentes",
         # f"Configured with {runtime.context.get('my_configurable_param')}"
     }
 
@@ -183,5 +186,5 @@ if __name__ == "__main__":
 
     load_dotenv()
 
-    state = State(last_user_message="Bonjour, j'aime la randonnée")
+    state = State(last_user_message="Bonjour, j'aime la montagne")
     print(asyncio.run(graph.ainvoke(state)))
