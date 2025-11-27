@@ -122,7 +122,7 @@ async def chat_model(state: State):
     print(str(state))
     # see https://docs.mistral.ai/getting-started/models/models_overview/
 
-    chat_model = init_chat_model(model="codestral-2508", model_provider="mistralai")
+    chat_model = init_chat_model(model="mistral-small-2506", model_provider="mistralai")
 
     # Si le message de l'utilisateur est incompréhensible, on le lui fait savoir poliment en renvoyant notre réponse
     res = await chat_model.with_structured_output(MessageUnderstandable).ainvoke(
