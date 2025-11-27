@@ -48,6 +48,7 @@ class Criteres(BaseModel):
 
 
 def match_criteria_and_travels(criteres: Criteres) -> str:
+    # Si la personne est handicapee on ne garde que les voyages qui remplissent ce critère
     if criteres.acces_handicap:
         output_travels = []
         for travels in OUTPUT_TRAVELS:
@@ -56,18 +57,22 @@ def match_criteria_and_travels(criteres: Criteres) -> str:
     else:
         output_travels = OUTPUT_TRAVELS
 
+    # On calcul un score pour chaque voyage
     scores_for_travels = [0] * len(output_travels)
-
     for num_travel, travel in enumerate(output_travels):
         labels = [unidecode.unidecode(label) for label in travel["labels"]]
         for criterion, criterion_yes_no in criteres.model_dump().items():
+            # On n'ajoute pas de points pour le critère handicap puisque la liste est filtrée
             if criterion == "acces_handicap":
                 continue
+            # Si un des labels du voyage ne fait pas partie des critères que nous appécions on retire un point à ce voyage
             if (not criterion_yes_no) and (criterion in labels):
                 scores_for_travels[num_travel] += -1
+            # Si un des labels du voyage fait partie des critères que nous appécions on ajoute un point à ce voyage
             if criterion_yes_no and (criterion in labels):
                 scores_for_travels[num_travel] += 1
 
+    # On regardes quels sont les voyages qui ont le meilleur score et on ajoute un peu d'aléa lorsue le même score est trouvé
     max_score = -10 * len(criteres.model_dump().keys())
     num_best_travel = None
     for i, score in enumerate(scores_for_travels):
@@ -118,10 +123,11 @@ async def chat_model(state: State):
     # see https://docs.mistral.ai/getting-started/models/models_overview/
 
     chat_model = init_chat_model(model="codestral-2508", model_provider="mistralai")
+
+    # Si le message de l'utilisateur est incompréhensible, on le lui fait savoir poliment en renvoyant notre réponse
     res = await chat_model.with_structured_output(MessageUnderstandable).ainvoke(
         f"Le message suivant est-il compréhensible? \n {state.last_user_message}"
     )
-
     if not res.answer:
         return {
             "last_user_message": state.last_user_message,
@@ -131,6 +137,7 @@ async def chat_model(state: State):
             # f"Configured with {runtime.context.get('my_configurable_param')}"
         }
 
+    # Sinon on cherche des critères
     criteres = await chat_model.with_structured_output(Criteres).ainvoke(state.last_user_message)
     print(criteres)
     if all(v is None for v in res.model_dump().values()):
