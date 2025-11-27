@@ -63,7 +63,7 @@ def match_criteria_and_travels(criteres: Criteres) -> str:
         labels = [unidecode.unidecode(label) for label in travel["labels"]]
         for criterion, criterion_yes_no in criteres.model_dump().items():
             # On n'ajoute pas de points pour le critère handicap puisque la liste est filtrée
-            if criterion == "acces_handicap":
+            if criterion == "acces_handicap" or criterion is None:
                 continue
             # Si un des labels du voyage ne fait pas partie des critères que nous appécions on retire un point à ce voyage
             if (not criterion_yes_no) and (criterion in labels):
@@ -154,9 +154,9 @@ async def chat_model(state: State):
 
     if state.ai_structured_output is None:
         # Initiating Criteria, we set them to None as asked, when not mentionned
-        for key, val in criteres.model_dump().items():
-            if val is None:
-                setattr(criteres, key, False)
+        #for key, val in criteres.model_dump().items():
+        #    if val is None:
+        #        setattr(criteres, key, False)
         state.ai_structured_output = criteres
     else:
         # Updating Criteria
