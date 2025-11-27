@@ -140,7 +140,7 @@ async def chat_model(state: State):
     # Sinon on cherche des critères
     criteres = await chat_model.with_structured_output(Criteres).ainvoke(state.last_user_message)
     print(criteres)
-    if all(v is None for v in res.model_dump().values()):
+    if all(v is None for v in criteres.model_dump().values()):
         return {
             "last_user_message": state.last_user_message,
             "message_count": state.message_count + 1,
